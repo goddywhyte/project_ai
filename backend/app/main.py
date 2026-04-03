@@ -11,7 +11,7 @@ from app.routes.job import router as job_router
 from app.routes.notification import router as notification_router
 from app.routes.admin import router as admin_router
 
-from app.middleware.rate_limit import rate_limit
+
 
 
 # ✅ CREATE APP
@@ -22,12 +22,7 @@ app = FastAPI()
 Base.metadata.create_all(bind=engine)
 
 
-# ✅ MIDDLEWARE
-@app.middleware("http")
-async def limiter(request: Request, call_next):
-    rate_limit(request)
-    response = await call_next(request)
-    return response
+
 
 
 # ✅ ROUTES
