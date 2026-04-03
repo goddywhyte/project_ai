@@ -1,18 +1,11 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
+import json
 
 from app.database.database import SessionLocal
 from app.schemas.user import UserCreate, UserLogin, UserProfileUpdate
-from app.services.auth_service import (
-    register_user,
-    login_user,
-    update_user_profile,
-    calculate_account_completion
-)
-from app.services.user_service import (
-    search_users_by_skill,
-    match_users_by_skills
-)
+from app.services.auth_service import register_user, login_user
+from app.services.file_service import save_file
 from app.auth.dependencies import get_current_user
 from app.models.user import User
 from app.utils.response import success_response
@@ -21,7 +14,6 @@ from app.utils.skills import skills_to_list
 router = APIRouter()
 
 
-# DB Dependency
 def get_db():
     db = SessionLocal()
     try:
@@ -64,24 +56,14 @@ def update_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    updated_user = update_user_profile(
-        db,
-        current_user,
-        payload.full_name,
-        payload.phone,
-        payload.skills
-    )
+    current_user.full_name = payload.full_name
+    current_user.phone = payload.phone
+    current_user.skills = json.dumps([s.dict() for s in payload.skills])
 
-    return success_response(
-        data={
-            "email": updated_user.email,
-            "full_name": updated_user.full_name,
-            "phone": updated_user.phone,
-            "skills": skills_to_list(updated_user.skills),
-            "account_completion": calculate_account_completion(updated_user)
-        },
-        message="Profile updated"
-    )
+    db.commit()
+    db.refresh(current_user)
+
+    return success_response(message="Profile updated")
 
 
 @router.get("/me")
@@ -92,79 +74,57 @@ def get_profile(current_user: User = Depends(get_current_user)):
             "full_name": current_user.full_name,
             "phone": current_user.phone,
             "skills": skills_to_list(current_user.skills),
-            "account_completion": calculate_account_completion(current_user)
-        },
-        message="User profile fetched"
-    )
-
-
-@router.get("/completion")
-def get_completion(current_user: User = Depends(get_current_user)):
-    return success_response(
-        data={
-            "account_completion": calculate_account_completion(current_user)
-        },
-        message="Account completion fetched"
+            "cv_file": current_user.cv_file,
+            "profile_image": current_user.profile_image
+        }
     )
 
 
 # =========================
-# SEARCH
+# FILE UPLOADS (SECURE)
 # =========================
 
-@router.get("/users/search")
-def search_users(
-    skill: str = Query(...),
-    level: str = Query(None),
+@router.post("/upload/cv")
+def upload_cv(
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    users = search_users_by_skill(db, skill, level)
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF allowed")
 
-    results = []
+    content = file.file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Max 5MB")
 
-    for user in users:
-        results.append({
-            "email": user.email,
-            "full_name": user.full_name,
-            "skills": skills_to_list(user.skills)
-        })
+    file.file.seek(0)
 
-    return success_response(
-        data=results,
-        message="Users fetched successfully"
-    )
+    path = save_file(file, "cv")
+
+    current_user.cv_file = path
+    db.commit()
+
+    return success_response(data={"cv_file": path})
 
 
-# =========================
-# MATCHING (UPDATED)
-# =========================
-
-@router.get("/users/match")
-def match_users(
-    skills: str = Query(...),
-    min_match: int = Query(1),
+@router.post("/upload/image")
+def upload_image(
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    skill_list = skills.split(",")
+    if not file.filename.lower().endswith((".jpg", ".jpeg", ".png")):
+        raise HTTPException(status_code=400, detail="Invalid image")
 
-    matches = match_users_by_skills(db, skill_list, min_match)
+    content = file.file.read()
+    if len(content) > 3 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Max 3MB")
 
-    results = []
+    file.file.seek(0)
 
-    for m in matches:
-        user = m["user"]
+    path = save_file(file, "images")
 
-        results.append({
-            "email": user.email,
-            "full_name": user.full_name,
-            "skills": skills_to_list(user.skills),
-            "match_count": m["match_count"],
-            "score": m["score"]
-        })
+    current_user.profile_image = path
+    db.commit()
 
-    return success_response(
-        data=results,
-        message="Matched users successfully"
-    )
+    return success_response(data={"profile_image": path})

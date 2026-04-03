@@ -1,11 +1,15 @@
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import List, Optional
-import re
+from pydantic import BaseModel, EmailStr, Field
+from typing import List
+
+
+class Skill(BaseModel):
+    name: str = Field(..., min_length=2, max_length=50)
+    level: str
 
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(..., min_length=6)
 
 
 class UserLogin(BaseModel):
@@ -13,24 +17,7 @@ class UserLogin(BaseModel):
     password: str
 
 
-class SkillItem(BaseModel):
-    name: str
-    level: str
-
-    @validator("level")
-    def validate_level(cls, v):
-        if v.lower() not in ["beginner", "intermediate", "expert"]:
-            raise ValueError("Invalid level")
-        return v.lower()
-
-
 class UserProfileUpdate(BaseModel):
-    full_name: Optional[str]
-    phone: Optional[str]
-    skills: Optional[List[SkillItem]]
-
-    @validator("full_name")
-    def validate_name(cls, v):
-        if v and re.search(r"\d", v):
-            raise ValueError("Name cannot contain numbers")
-        return v
+    full_name: str = Field(None, min_length=2, max_length=100)
+    phone: str = Field(None, min_length=7, max_length=20)
+    skills: List[Skill] = []

@@ -1,32 +1,33 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import HTTPException
+from fastapi.staticfiles import StaticFiles
 
-from app.config.settings import APP_NAME
 from app.database.database import engine
 from app.database.base import Base
 from app.routes.auth import router as auth_router
-from app.utils.response import error_response
-from app.utils.logger import get_logger
+from app.routes.job import router as job_router
+from app.routes.notification import router as notification_router
+from app.routes.admin import router as admin_router
+from app.middleware.rate_limiter import rate_limit
 
-logger = get_logger("main")
-
-app = FastAPI(title=APP_NAME)
+app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
 
+
+@app.middleware("http")
+async def limiter(request: Request, call_next):
+    rate_limit(request)
+    return await call_next(request)
+
+
 app.include_router(auth_router)
+app.include_router(job_router)
+app.include_router(notification_router)
+app.include_router(admin_router)
 
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    logger.error(f"HTTP Error: {exc.detail}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=error_response(exc.detail)
-    )
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 @app.get("/")
 def root():
-    return {"message": f"{APP_NAME} is running"}
+    return {"message": "Secure API running"}

@@ -9,12 +9,15 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    email = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)
+    email = Column(String, unique=True, index=True)
+    password = Column(String)
 
     full_name = Column(String, nullable=True)
-    phone = Column(String, unique=True, nullable=True)
+    phone = Column(String, nullable=True)
+
     skills = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    cv_file = Column(String, nullable=True)
+    profile_image = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
